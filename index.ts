@@ -17,9 +17,15 @@
  * 交给 WorkingStatusIndicator 同时给 spinner 和文案上色，
  * 因此 working 自动和边框同色。
  *
- * 圆角输入框：
- * 默认 pi 的 editor 只画上下两条横线；EDITOR_ROUNDED = true 时
+ * 输入框边框：
+ * 默认 pi 的 editor 只画上下两条横线；FRAME_STYLE_DEFAULT = "rounded" 时
  * 在子类里把宽度减 2 交给基类渲染，再补上 │ 与 ╭╮╰╯，得到完整圆角盒子。
+ * 想回到 pi 原生观感（只留上下两条横线、没有左右竖线）就设 "line"，
+ * 也可以随时用 /dragon frame（菜单里的 Frame style）切，写配置、重启仍生效。
+ *
+ * 输入框提示符：
+ * 第一行行首画 `>` 或 `_`（默认 `>`），续行缩进按它的宽度自动对齐。
+ * 用 /dragon prompt（菜单里的 Prompt glyph）切 / 关掉，同样写配置、重启仍生效。
  *
  * 安装方式（二选一）：
  *   1. package 方式：pi install /绝对路径/pi-dragon-tui（或 pi install git:github.com/xxx/pi-dragon-tui）
@@ -45,15 +51,27 @@ import type {
 import { installRoundedCustom, type RoundedDialogsConfig } from "./rounded-frame.ts";
 import { DragonMenu } from "./picker.ts";
 import {
+	FRAME_STYLES,
+	FRAME_STYLE_LABELS,
 	PALETTES,
+	parseFrameStyle,
+	parsePromptGlyph,
 	parseThinkingMode,
+	PROMPT_GLYPHS,
+	PROMPT_GLYPH_LABELS,
+	readSavedFrameStyle,
 	readSavedHex,
+	readSavedPromptGlyph,
 	readSavedThinkingMode,
 	resolvePalette,
+	saveFrameStyle,
 	saveHex,
+	savePromptGlyph,
 	saveThinkingMode,
 	THINKING_MODES,
 	THINKING_MODE_LABELS,
+	type FrameStyle,
+	type PromptGlyph,
 	type ThinkingMode,
 } from "./palette.ts";
 
@@ -133,32 +151,52 @@ const TPS_MIN_SECONDS = 0.25;
 const TPS_KEY = "dragon-tps";
 
 /**
- * 输入框（editor）本身要不要圆角。true 时渲染成
- *   ╭──────────────╮
- *   │ > 输入内容    │
- *   ╰──────────────╯
- * 关掉就设 EDITOR_ROUNDED = false，恢复 pi 默认的上下两条横线。
- * 只影响这个扩展自己的 editor，不影响内置 select / confirm / input 弹框。
+ * 输入框（editor）与 ctx.ui.custom() 弹框的边框样式：
+ *
+ *   "rounded"   ╭──────────────╮
+ *               │ > 输入内容    │
+ *               ╰──────────────╯
+ *
+ *   "line"      ────────────────
+ *                > 输入内容
+ *               ────────────────
+ *               只留上下两条横线，没有左右竖线（pi 原生观感）。
+ *
+ * 这里只是默认值：`/dragon frame` 保存过选择时以存的为准；运行时切换即时生效，
+ * 输入框与之后打开的弹框都会跟着变。
  */
-const EDITOR_ROUNDED = true;
+const FRAME_STYLE_DEFAULT: FrameStyle = "rounded";
 
 /**
- * 输入框行首提示符。`PROMPT_GLYPH` 为非空时，第一行内容前画 `PROMPT_LEAD + glyph + 空格`；
- * 续行缩进按提示符的实际宽度自动生成，所以换行后上下两行文字始终对齐。
- * 想换成别的（❯ › ▸）改 PROMPT_GLYPH；留空字符串就完全关掉提示符。
+ * 输入框行首提示符。`PROMPT_GLYPH_DEFAULT` 不是 "none" 时，第一行内容前画
+ * `PROMPT_LEAD + glyph + 空格`；续行缩进按提示符的实际宽度自动生成，
+ * 所以换行后上下两行文字始终对齐。
+ *
+ * 这里只是默认值：`/dragon prompt`（菜单里的 Prompt glyph）保存过选择时以存的为准；
+ * 运行时切换即时生效、写配置、重启仍生效。可选 "none" / ">" / "_"，
+ * 想再加字形就改 palette.ts 的 PROMPT_GLYPHS。
  * 颜色跟随边框（BORDER_HEX / `/dragon`），不单独配。
  */
 const PROMPT_LEAD = " ";
-const PROMPT_GLYPH = ">";
+const PROMPT_GLYPH_DEFAULT: PromptGlyph = ">";
 
-/** 提示符占的列数：前置空格 + 字形 + 尾随空格。留空字形时为 0。 */
+/** 当前提示符：模块加载时读配置，被 /dragon prompt 与菜单改。 */
+let promptGlyph: PromptGlyph = readSavedPromptGlyph() ?? PROMPT_GLYPH_DEFAULT;
+
+/** 实际要画的字形（"none" 就是空串），下面几处都读它。 */
+function promptGlyphChar(): string {
+	return promptGlyph === "none" ? "" : promptGlyph;
+}
+
+/** 提示符占的列数：前置空格 + 字形 + 尾随空格。隐藏时为 0。 */
 function promptWidth(): number {
-	return PROMPT_GLYPH ? visibleWidth(PROMPT_LEAD) + visibleWidth(PROMPT_GLYPH) + 1 : 0;
+	const glyph = promptGlyphChar();
+	return glyph ? visibleWidth(PROMPT_LEAD) + visibleWidth(glyph) + 1 : 0;
 }
 
 /**
- * 给所有扩展的 `ctx.ui.custom()` 弹框套圆角边框。
- * 关掉就设 ENABLED = false；只想给 overlay 浮层加就设 OVERLAY_ONLY = true。
+ * 给所有扩展的 `ctx.ui.custom()` 弹框套边框（圆角 / 纯横线跟随 FRAME_STYLE_DEFAULT）。
+ * 关掉就设 ROUNDED_ENABLED = false；只想给 overlay 浮层加就设 overlayOnly = true。
  * 注意：内置的 select / confirm / input / editor 不走 custom，不受影响。
  */
 const ROUNDED_ENABLED = true;
@@ -318,7 +356,8 @@ type WorkingIndicatorLike = {
 
 class FixedBorderEditor extends CustomEditor {
 	private readonly mode: ColorMode;
-	private readonly rounded: boolean;
+	/** 每次渲染都重新取一次，/dragon frame 切完下一帧就生效。 */
+	private readonly frameStyle: () => FrameStyle;
 
 	constructor(
 		tui: TUI,
@@ -326,13 +365,13 @@ class FixedBorderEditor extends CustomEditor {
 		keybindings: KeybindingsManager,
 		colorFn: ColorFn,
 		mode: ColorMode,
-		rounded: boolean,
+		frameStyle: () => FrameStyle,
 	) {
 		// embedWorkingStatus: true → working 指示器渲染在顶边框内，
 		// 并用 borderColor 给 spinner 与文案上色（即与边框同色）。
 		super(tui, theme, keybindings, { embedWorkingStatus: true });
 		this.mode = mode;
-		this.rounded = rounded;
+		this.frameStyle = frameStyle;
 
 		// pi 会在思考等级 / bash 模式 / 主题变化时覆写 borderColor，
 		// 用访问器把它锁死，外部赋值一律忽略。
@@ -345,9 +384,12 @@ class FixedBorderEditor extends CustomEditor {
 	}
 
 	/**
-	 * 圆角输入框。基类只画上下两条横线（内容是内缩 padding 的整行），
-	 * 这里把宽度减 2 交给基类渲染，再给每一行左右补上 │，
-	 * 顶/底两行补上 ╭╮ / ╰╯，就得到一个完整的圆角盒子。
+	 * 输入框边框。基类只画上下两条横线（内容是内缩 padding 的整行）。
+	 *
+	 *   rounded  把宽度减 2 交给基类渲染，再给每一行左右补上 │，
+	 *            顶/底两行补上 ╭╮ / ╰╯，得到一个完整的圆角盒子。
+	 *   line     不补 │ / ╭╮╰╯，只把顶/底横线补满宽度，保持 pi 原生观感；
+	 *            提示符缩进照旧。
 	 *
 	 * 行数不变（顶边仍是第 0 行），所以硬光标定位、内联渲染的
 	 * 行数计算都不用改。
@@ -355,8 +397,9 @@ class FixedBorderEditor extends CustomEditor {
 	override render(width: number): string[] {
 		const safeWidth = Math.floor(width);
 		const pw = promptWidth();
+		// 只有 rounded 才描左右 │；line 只影响顶/底横线。
 		// 太窄画不下左右边框就退回基类；但这样内容仍会被缩窄，只是不补 │。
-		const framed = this.rounded && safeWidth >= 4 + pw;
+		const framed = this.frameStyle() === "rounded" && safeWidth >= 4 + pw;
 
 		// 既不加提示符也不描边 → 完全保持基类行为。
 		if (!framed && pw === 0) {
@@ -375,6 +418,9 @@ class FixedBorderEditor extends CustomEditor {
 			return lines;
 		}
 
+		// 提示符字形（"none" → 空串），第一行才画。
+		const glyph = promptGlyphChar();
+
 		// 基类 layout： [顶边框, ...可见内容行, 底边框, ...补全列表]
 		// renderedVisibleLineCount 是私有字段，这里按结构取用。
 		const visibleCount = (
@@ -392,14 +438,16 @@ class FixedBorderEditor extends CustomEditor {
 		const right = framed ? corner("│") : "";
 
 		out.push(
-			(framed ? corner("╭") : "") + lines[0]! + borderPad + (framed ? corner("╮") : ""),
+			framed
+				? corner("╭") + lines[0]! + borderPad + corner("╮")
+				: lines[0]! + borderPad,
 		);
 
 		for (let i = 1; i < bottomIndex; i++) {
 			// 第一行画 ` > `，续行用同宽空格缩进，换行后文字左边对齐。
-			const prefix = PROMPT_GLYPH
+			const prefix = glyph
 				? i === 1
-					? PROMPT_LEAD + this.borderColor(PROMPT_GLYPH) + " "
+					? PROMPT_LEAD + this.borderColor(glyph) + " "
 					: " ".repeat(pw)
 				: "";
 			out.push(left + prefix + lines[i]! + right);
@@ -407,10 +455,9 @@ class FixedBorderEditor extends CustomEditor {
 
 		if (bottomIndex >= 1) {
 			out.push(
-				(framed ? corner("╰") : "") +
-					lines[bottomIndex]! +
-					borderPad +
-					(framed ? corner("╯") : ""),
+				framed
+					? corner("╰") + lines[bottomIndex]! + borderPad + corner("╯")
+					: lines[bottomIndex]! + borderPad,
 			);
 		}
 
@@ -429,7 +476,7 @@ class FixedBorderEditor extends CustomEditor {
 	 */
 	override handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
 		const pw = promptWidth();
-		const framed = this.rounded && event.width >= 4 + pw;
+		const framed = this.frameStyle() === "rounded" && event.width >= 4 + pw;
 		const shift = pw + (framed ? 1 : 0);
 		if (shift === 0) {
 			return super.handleMouse(event);
@@ -500,7 +547,7 @@ type AssistantComponentLike = {
 	updateContent?: (message: unknown, isStreaming?: boolean) => void;
 };
 
-type MouseRegionLike = { child?: { text?: string } & Record<string, unknown> };
+type MouseRegionLike = { child?: Component & { text?: string } };
 
 type CollapsedThinkingApplier = (
 	component: AssistantComponentLike,
@@ -930,6 +977,8 @@ function hookExistingComponents(root: unknown): void {
 export default function (pi: ExtensionAPI) {
 	// 当前配色：index.ts 的 BORDER_HEX 起步，被 /dragon 记住的选择覆盖。
 	const border = new BorderColor(readSavedHex() ?? BORDER_HEX);
+	// 当前边框样式：默认 FRAME_STYLE_DEFAULT（圆角），被 /dragon frame 记住的选择覆盖。
+	let frameStyle: FrameStyle = readSavedFrameStyle() ?? FRAME_STYLE_DEFAULT;
 	// 留着给 /dragon 换色后主动重绘，不然要等下一次按键才看到新颜色。
 	let currentTui: TUI | undefined;
 	// 同上：换色后按新颜色重画状态栏里的 TPS（TPS 那一段初始化时赋值）。
@@ -948,6 +997,52 @@ export default function (pi: ExtensionAPI) {
 				: `Border → ${label} (saved)`,
 			err ? "warning" : "info",
 		);
+	};
+
+	/** 应用边框样式：改内存 → 重绘 → 落盘。editor 与 custom 弹框读的是同一个变量。 */
+	const applyFrameStyle = (style: FrameStyle, ctx: ExtensionContext): void => {
+		frameStyle = style;
+		currentTui?.requestRender(true);
+
+		const err = saveFrameStyle(style);
+		ctx.ui.notify(
+			err
+				? `Frame → ${FRAME_STYLE_LABELS[style]}, but saving the config failed: ${err}`
+				: `Frame → ${FRAME_STYLE_LABELS[style]} (saved)`,
+			err ? "warning" : "info",
+		);
+	};
+
+	/** 切到下一个 / 指定的边框样式并弹通知（给 /dragon frame 用）。 */
+	const cycleFrameStyle = (ctx: ExtensionContext, explicit?: FrameStyle): void => {
+		const next =
+			explicit ??
+			FRAME_STYLES[(FRAME_STYLES.indexOf(frameStyle) + 1) % FRAME_STYLES.length]!;
+		applyFrameStyle(next, ctx);
+	};
+
+	/** 应用提示符字形：改内存 → 重绘 → 落盘。promptWidth 跟着变，缩进自动对齐。 */
+	const applyPromptGlyph = (glyph: PromptGlyph, ctx: ExtensionContext): void => {
+		promptGlyph = glyph;
+		currentTui?.requestRender(true);
+
+		const err = savePromptGlyph(glyph);
+		ctx.ui.notify(
+			err
+				? `Prompt glyph → ${PROMPT_GLYPH_LABELS[glyph]}, but saving the config failed: ${err}`
+				: `Prompt glyph → ${PROMPT_GLYPH_LABELS[glyph]} (saved)`,
+			err ? "warning" : "info",
+		);
+	};
+
+	/** 切到下一个 / 指定的提示符并弹通知（给 /dragon prompt 与菜单用）。 */
+	const cyclePromptGlyph = (ctx: ExtensionContext, explicit?: PromptGlyph): void => {
+		const next =
+			explicit ??
+			PROMPT_GLYPHS[
+				(PROMPT_GLYPHS.indexOf(promptGlyph) + 1) % PROMPT_GLYPHS.length
+			]!;
+		applyPromptGlyph(next, ctx);
 	};
 
 	/** 写入「收起思考」显示方式：改内存 → 重绘 → 落盘。返回保存错误与重绘诊断（无错为 undefined）。 */
@@ -981,10 +1076,12 @@ export default function (pi: ExtensionAPI) {
 		);
 	};
 
-	// ── /dragon：切换边框配色；/dragon thinking [1|2|off] 切思考折叠时的显示方式 ──
+	// ── /dragon：切换边框配色；/dragon frame [rounded|lines] 切边框样式；
+	//    /dragon thinking [1|2|off] 切思考折叠时的显示方式；
+	//    /dragon prompt [>|_|none] 切输入框行首提示符 ──
 	pi.registerCommand("dragon", {
 		description:
-			"Border color (goku / vegeta / piccolo), or `thinking` to switch how collapsed thinking shows (1 line / 2 lines / hidden)",
+			"Border color (goku / vegeta / piccolo), `frame` for rounded ↔ lines, `thinking` for collapsed-thinking display, or `prompt` for the editor prompt glyph",
 		getArgumentCompletions: (prefix) => {
 			const needle = prefix.trim().toLowerCase();
 			const current = thinkingStore().mode ?? THINKING_MODE_DEFAULT;
@@ -995,6 +1092,21 @@ export default function (pi: ExtensionAPI) {
 					description: p.en,
 				})),
 				{
+					value: "frame",
+					label: "frame",
+					description: `Cycle editor / modal frame: rounded ↔ lines (now: ${FRAME_STYLE_LABELS[frameStyle]})`,
+				},
+				{
+					value: "frame rounded",
+					label: "frame rounded",
+					description: "╭─╮ / ╰─╯ box with side bars",
+				},
+				{
+					value: "frame lines",
+					label: "frame lines",
+					description: "Keep only the top/bottom rules (pi's native look)",
+				},
+				{
 					value: "thinking",
 					label: "thinking",
 					description: `Cycle collapsed-thinking display (now: ${THINKING_MODE_LABELS[current]})`,
@@ -1002,7 +1114,7 @@ export default function (pi: ExtensionAPI) {
 				{
 					value: "thinking 1",
 					label: "thinking 1",
-					description: "Only pi's native `Thinking...` line",
+					description: "`Thinking...` header plus one live line",
 				},
 				{
 					value: "thinking 2",
@@ -1012,7 +1124,27 @@ export default function (pi: ExtensionAPI) {
 				{
 					value: "thinking off",
 					label: "thinking off",
-					description: "Hide the thinking block completely",
+					description: "Only pi's native `Thinking...` header (no live lines)",
+				},
+				{
+					value: "prompt",
+					label: "prompt",
+					description: `Cycle the editor prompt glyph (now: ${PROMPT_GLYPH_LABELS[promptGlyph]})`,
+				},
+				{
+					value: "prompt >",
+					label: "prompt >",
+					description: "Half-width `>` before the first input line",
+				},
+				{
+					value: "prompt _",
+					label: "prompt _",
+					description: "Underscore before the first input line",
+				},
+				{
+					value: "prompt none",
+					label: "prompt none",
+					description: "No prompt glyph — text starts at the edge",
 				},
 			];
 			const hit = items.filter((x) => x.value.startsWith(needle));
@@ -1021,6 +1153,35 @@ export default function (pi: ExtensionAPI) {
 		handler: async (args, ctx) => {
 			const arg = args.trim().toLowerCase();
 			const [head = "", ...rest] = arg.split(/\s+/);
+
+			// /dragon prompt [>|_|none] → 输入框行首提示符（写配置，重启仍生效）。
+			if (head === "prompt" || head === "glyph") {
+				const raw = rest.join(" ").trim();
+				if (raw.length > 0 && parsePromptGlyph(raw) === undefined) {
+					ctx.ui.notify(
+						`Unknown prompt glyph "${raw}". Try: > / _ / none (no argument cycles)`,
+						"warning",
+					);
+					return;
+				}
+				cyclePromptGlyph(ctx, parsePromptGlyph(raw));
+				return;
+			}
+
+			// /dragon frame [rounded|lines] → 圆角框 / 只留上下两条横线（写配置，重启仍生效）。
+			if (head === "frame" || head === "box") {
+				const raw = rest.join(" ").trim();
+				const explicit = parseFrameStyle(raw);
+				if (raw.length > 0 && explicit === undefined) {
+					ctx.ui.notify(
+						`Unknown frame style "${raw}". Try: rounded / lines (no argument cycles)`,
+						"warning",
+					);
+					return;
+				}
+				cycleFrameStyle(ctx, explicit);
+				return;
+			}
 
 			// /dragon thinking [1|2|off] → 收起思考怎么显示（写配置，重启仍生效）。
 			if (head === "thinking" || head === "think") {
@@ -1053,7 +1214,15 @@ export default function (pi: ExtensionAPI) {
 									key: p.key,
 									label: `${p.key} · ${p.en}`,
 								})),
+								frameStyle,
+								promptGlyph,
 								thinkingMode: thinkingStore().mode ?? THINKING_MODE_DEFAULT,
+								onFrameStyle: (style) => {
+									applyFrameStyle(style, ctx);
+								},
+								onPromptGlyph: (glyph) => {
+									applyPromptGlyph(glyph, ctx);
+								},
 								onColor: (key) => {
 									const target = PALETTES.find((p) => p.key === key);
 									if (target) {
@@ -1208,13 +1377,15 @@ export default function (pi: ExtensionAPI) {
 		// 收起思考（ctrl+T）时的显示方式：装 hook，并接上当前主题（主题单例是活的）。
 		thinkingStore().theme = ctx.ui.theme;
 
-		// 包装共享的 ctx.ui.custom，之后任何扩展的 custom 弹框都会被套上圆角框。
+		// 包装共享的 ctx.ui.custom，之后任何扩展的 custom 弹框都会被套上边框。
 		// /reload 会重建 uiContext，所以每次 session_start 都要重新装一遍（幂等）。
 		if (ROUNDED_ENABLED) {
 			// border 用和输入框边框同一个色源，两者永远同色、且跟着 /dragon 变。
 			installRoundedCustom(ctx.ui, ctx.ui.theme, {
 				...ROUNDED_CONFIG,
 				border: border.paint,
+				// 传 getter：/dragon frame 切完，之后打开的弹框立即用新样式。
+				frameStyle: () => frameStyle,
 			});
 		}
 		ctx.ui.setEditorComponent((tui, theme, keybindings) => {
@@ -1227,7 +1398,7 @@ export default function (pi: ExtensionAPI) {
 				keybindings,
 				border.paint,
 				mode,
-				EDITOR_ROUNDED,
+				() => frameStyle,
 			);
 		});
 	});

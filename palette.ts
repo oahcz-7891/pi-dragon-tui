@@ -198,3 +198,129 @@ export function readSavedThinkingMode(): ThinkingMode | undefined {
 export function saveThinkingMode(mode: ThinkingMode): string | undefined {
 	return writeConfig({ thinkingMode: mode });
 }
+
+// ─────────────────────── 边框样式（圆角 / 横线） ───────────────────────
+
+/**
+ * 输入框与 `ctx.ui.custom()` 弹窗的边框样式：
+ *   "rounded"  ╭────────╮
+ *              │ > 输入  │
+ *              ╰────────╯
+ *   "line"     ────────────
+ *               > 输入
+ *              ────────────
+ * 即 "line" 只保留上下两条横线，去掉左右竖线（pi 原生观感）。
+ */
+export type FrameStyle = "rounded" | "line";
+
+/** 固定的循环顺序（`/dragon frame` 不带参数时按它往下走）。 */
+export const FRAME_STYLES: readonly FrameStyle[] = ["rounded", "line"];
+
+/** 菜单右侧 / 通知里显示的文案。 */
+export const FRAME_STYLE_LABELS: Record<FrameStyle, string> = {
+	rounded: "rounded",
+	line: "lines",
+};
+
+/** `/dragon frame <值>` 的简写解析；空串或认不出来 → undefined（表示循环切换）。 */
+export function parseFrameStyle(input: string): FrameStyle | undefined {
+	switch (input.trim().toLowerCase()) {
+		case "rounded":
+		case "round":
+		case "corner":
+		case "corners":
+			return "rounded";
+		case "line":
+		case "lines":
+		case "flat":
+		case "plain":
+		case "native":
+		case "none":
+			return "line";
+		default:
+			return undefined;
+	}
+}
+
+/**
+ * 读取记住的边框样式；没存过 → undefined（用 index.ts 的默认值）。
+ * 走 parseFrameStyle，所以手写配置用菜单里显示的 "lines" 也能认。
+ */
+export function readSavedFrameStyle(): FrameStyle | undefined {
+	const value = readConfig().frameStyle;
+	return typeof value === "string" ? parseFrameStyle(value) : undefined;
+}
+
+/** 写入边框样式（`/dragon frame` / 菜单改的就是它）。 */
+export function saveFrameStyle(style: FrameStyle): string | undefined {
+	return writeConfig({ frameStyle: style });
+}
+
+// ─────────────────────── 输入框提示符（prompt glyph） ───────────────────────
+
+/**
+ * 输入框第一行行首画什么：
+ *   "none"  不画（内容顶头开始）
+ *   ">"     半角大于号
+ *   "_"     下划线
+ * 续行缩进按它的实际宽度自动算，所以换行后上下文字始终对齐。
+ */
+export type PromptGlyph = "none" | ">" | "_";
+
+/** 固定的循环顺序（`/dragon prompt` 不带参数时按它往下走）。 */
+export const PROMPT_GLYPHS: readonly PromptGlyph[] = ["none", ">", "_"];
+
+/** 菜单右侧 / 通知里显示的文案。 */
+export const PROMPT_GLYPH_LABELS: Record<PromptGlyph, string> = {
+	none: "hidden",
+	">": ">",
+	"_": "_",
+};
+
+/** `/dragon prompt <值>` 的简写解析；空串或认不出来 → undefined（表示循环切换）。 */
+export function parsePromptGlyph(input: string): PromptGlyph | undefined {
+	switch (input.trim().toLowerCase()) {
+		case "0":
+		case "off":
+		case "none":
+		case "hide":
+		case "hidden":
+		case "no":
+		case "empty":
+			return "none";
+		case ">":
+		case "gt":
+		case "angle":
+		case "chevron":
+		case "greater":
+			return ">";
+		case "_":
+		case "underscore":
+		case "low":
+		case "dash":
+		case "line":
+			return "_";
+		// 兼容旧配置：以前存过 "❯"，现在统一映射到 "_"。
+		case "❯":
+		case "arrow":
+		case "heavy":
+		case "bold":
+			return "_";
+		default:
+			return undefined;
+	}
+}
+
+/**
+ * 读取记住的提示符；没存过 → undefined（用 index.ts 的默认值）。
+ * 走 parsePromptGlyph，所以手写配置用菜单里显示的 "hidden" 也能认。
+ */
+export function readSavedPromptGlyph(): PromptGlyph | undefined {
+	const value = readConfig().promptGlyph;
+	return typeof value === "string" ? parsePromptGlyph(value) : undefined;
+}
+
+/** 写入提示符（`/dragon prompt` / 菜单改的就是它）。 */
+export function savePromptGlyph(glyph: PromptGlyph): string | undefined {
+	return writeConfig({ promptGlyph: glyph });
+}

@@ -1,5 +1,5 @@
 /**
- * RoundedFrame — 给任意 `ctx.ui.custom()` 组件套一层圆角边框。
+ * RoundedFrame — 给任意 `ctx.ui.custom()` 组件套一层边框（圆角 / 纯横线）。
  *
  * 为什么能覆盖“别人的”弹框：
  *   pi 每个 session 只 `createExtensionUIContext()` 一次，并把同一个 uiContext
@@ -27,6 +27,22 @@ import {
 type ThemeLike = { fg(color: string, text: string): string };
 type ColorFn = (text: string) => string;
 
+/**
+ * 边框样式：
+ *   "rounded"  ╭────╮ / │ 内容 │ / ╰────╯
+ *   "line"     只画上下两条横线，去掉左右 │（pi 原生观感）
+ * 与 palette.ts 的 FrameStyle 取值一致（故意不 import，保持本文件可单独拷走）。
+ */
+export type FrameCornerStyle = "rounded" | "line";
+
+/** 允许传固定值，也允许传 getter 以便 /dragon 运行时切换。 */
+type FrameStyleSource = FrameCornerStyle | (() => FrameCornerStyle);
+
+/** 把配置值统一成每次渲染都重新求值的 getter。 */
+function frameStyleGetter(value: FrameStyleSource | undefined): () => FrameCornerStyle {
+	return typeof value === "function" ? value : () => value ?? "rounded";
+}
+
 export interface RoundedDialogsConfig {
 	/** 边框颜色名（theme.fg 的 key），如 "accent" / "border"。传了 border 时忽略。 */
 	borderColor: string;
@@ -46,6 +62,12 @@ export interface RoundedDialogsConfig {
 	 * 放在底边框后面，需要往尾部回扫，见 stripEdgeRules()。
 	 */
 	stripInnerRules?: boolean;
+	/**
+	 * 边框样式；传函数可运行时切换（/dragon frame）。默认 "rounded"。
+	 * "line" 时只留上下两条横线，没有左右竖线，内容用满整宽（paddingX 留白照旧）。
+	 * 注意：line 样式下会强制 stripInnerRules（否则内层分隔线与外框横线宽度不一致，看着像重影）。
+	 */
+	frameStyle?: FrameStyleSource;
 }
 
 /** 去掉 ANSI 转义后是否只剩横线字符（pi 的 DynamicBorder 就是整行 `─`）。 */
@@ -94,24 +116,32 @@ interface DisposableComponent extends Component {
 	wantsKeyRelease?: boolean;
 }
 
-/** 圆角边框容器：把内层组件渲染进 ╭─╮ / ╰─╯ 里，并转发焦点与输入。 */
+/** 边框容器：把内层组件渲染进 ╭─╮ / ╰─╯（或纯横线）里，并转发焦点与输入。 */
 export class RoundedFrame implements Component, Focusable {
 	private readonly inner: DisposableComponent;
 	private readonly border: ColorFn;
 	private readonly paddingX: number;
 	private readonly paddingY: number;
 	private readonly stripInnerRules: boolean;
+	private readonly frameStyle: () => FrameCornerStyle;
 	private _focused = false;
 
 	constructor(
 		inner: DisposableComponent,
-		options: { border: ColorFn; paddingX: number; paddingY: number; stripInnerRules?: boolean },
+		options: {
+			border: ColorFn;
+			paddingX: number;
+			paddingY: number;
+			stripInnerRules?: boolean;
+			frameStyle?: FrameStyleSource;
+		},
 	) {
 		this.inner = inner;
 		this.border = options.border;
 		this.paddingX = Math.max(0, options.paddingX);
 		this.paddingY = Math.max(0, options.paddingY);
 		this.stripInnerRules = options.stripInnerRules ?? true;
+		this.frameStyle = frameStyleGetter(options.frameStyle);
 	}
 
 	get focused(): boolean {
@@ -126,10 +156,11 @@ export class RoundedFrame implements Component, Focusable {
 		}
 	}
 
-	/** 让 overlay 的宽度推断把边框算进去。 */
+	/** 让 overlay 的宽度推断把边框算进去（line 样式没有左右竖线，少 2 列）。 */
 	get width(): number | undefined {
 		const w = this.inner.width;
-		return typeof w === "number" ? w + 2 * (this.paddingX + 1) : undefined;
+		if (typeof w !== "number") return undefined;
+		return w + 2 * this.paddingX + (this.frameStyle() === "rounded" ? 2 : 0);
 	}
 
 	get wantsKeyRelease(): boolean {
@@ -154,30 +185,44 @@ export class RoundedFrame implements Component, Focusable {
 
 	render(width: number): string[] {
 		const safeWidth = Math.max(1, Math.floor(width));
-		// 太窄画不下边框，直接透传，免得把别人组件挤坏。
-		if (safeWidth < 4) {
+		const rounded = this.frameStyle() === "rounded";
+		// 圆角框太窄画不下左右竖线，直接透传，免得把别人组件挤坏。
+		if (rounded && safeWidth < 4) {
 			return this.inner.render(safeWidth);
 		}
 
-		const innerWidth = safeWidth - 2;
-		const contentWidth = Math.max(1, innerWidth - this.paddingX * 2);
-		const pad = " ".repeat(this.paddingX);
-		const blank = this.border("│") + " ".repeat(innerWidth) + this.border("│");
+		// line 样式没有左右竖线，内层可以直接用满整宽。
+		const innerWidth = rounded ? safeWidth - 2 : safeWidth;
+		// 极窄时把左右留白收掉，保证 pad + 内容 + pad 刚好等于 innerWidth。
+		const padWidth = Math.min(
+			this.paddingX,
+			Math.max(0, Math.floor((innerWidth - 1) / 2)),
+		);
+		const contentWidth = Math.max(1, innerWidth - padWidth * 2);
+		const pad = " ".repeat(padWidth);
+		const side = rounded ? this.border("│") : "";
+		const blank = side + " ".repeat(innerWidth) + side;
 
-		const top = this.border(`╭${"─".repeat(innerWidth)}╮`);
-		const bottom = this.border(`╰${"─".repeat(innerWidth)}╯`);
+		const top = rounded
+			? this.border(`╭${"─".repeat(innerWidth)}╮`)
+			: this.border("─".repeat(safeWidth));
+		const bottom = rounded
+			? this.border(`╰${"─".repeat(innerWidth)}╯`)
+			: top;
 
 		const lines: string[] = [top];
 		for (let i = 0; i < this.paddingY; i++) lines.push(blank);
 
 		const rendered = this.inner.render(contentWidth);
-		// 内层自带的上下横线（DynamicBorder）在这里各砍一行，只留圆角框一条边。
-		for (const raw of this.stripInnerRules ? stripEdgeRules(rendered) : rendered) {
+		// 内层自带的上下横线（DynamicBorder）在这里各砍一行，只留外框一条边。
+		// line 样式必须砍：外框横线是整宽的，留着内层那条会变成两条不同宽度的横线。
+		const strip = this.stripInnerRules || !rounded;
+		for (const raw of strip ? stripEdgeRules(rendered) : rendered) {
 			// 只在超宽时才截断，避免误伤 CURSOR_MARKER 等零宽序列。
 			const clipped = visibleWidth(raw) > contentWidth ? truncateToWidth(raw, contentWidth, "") : raw;
 			const fill = " ".repeat(Math.max(0, contentWidth - visibleWidth(clipped)));
 			// 边框字符单独上色，别把颜色串到内层内容上。
-			lines.push(this.border("│") + pad + clipped + fill + pad + this.border("│"));
+			lines.push(side + pad + clipped + fill + pad + side);
 		}
 
 		for (let i = 0; i < this.paddingY; i++) lines.push(blank);
@@ -223,6 +268,7 @@ export function installRoundedCustom(
 					paddingX: config.paddingX,
 					paddingY: config.paddingY,
 					stripInnerRules: config.stripInnerRules,
+					frameStyle: config.frameStyle,
 				});
 
 			const result = (factory as (...a: unknown[]) => unknown)(tui, currentTheme, keybindings, done);
