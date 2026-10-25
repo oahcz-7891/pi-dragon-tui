@@ -28,8 +28,8 @@
  * 在 /dragon 菜单里（Prompt glyph）切 / 关掉，同样写配置、重启仍生效。
  *
  * 输出染色：
- * /dragon 菜单里的 Output tint（默认 on）把助理消息的 markdown 强调色与正文
- * 往边框色上靠，算法与 tint-preview.html 一致（见 tint.ts）。
+ * /dragon 菜单里的 Output tint（默认 off，可手动开启）把助理消息的 markdown 强调色
+ * 与正文往边框色上靠，算法与 tint-preview.html 一致（见 tint.ts）。
  *
  * 安装方式（二选一）：
  *   1. package 方式：pi install /绝对路径/pi-dragon-tui（或 pi install git:github.com/xxx/pi-dragon-tui）
@@ -90,9 +90,10 @@ const BORDER_HEX = "#f0c674";
 
 /**
  * 输出染色默认开关。true = 助理消息的 markdown 跟着边框色走；false = pi 原生配色。
+ * 默认关闭：保持 pi 原生观感，想要染色在 /dragon 菜单里手动打开。
  * 只是默认值：/dragon 菜单里的 Output tint 保存过选择时以存的为准。
  */
-const OUTPUT_TINT_DEFAULT = true;
+const OUTPUT_TINT_DEFAULT = false;
 
 /**
  * working 指示器（spinner + "Working" 文案）的颜色，6 位 hex。
@@ -992,7 +993,7 @@ export default function (pi: ExtensionAPI) {
 	const border = new BorderColor(readSavedHex() ?? BORDER_HEX);
 	// 当前边框样式：默认 FRAME_STYLE_DEFAULT（圆角），被 /dragon 菜单记住的选择覆盖。
 	let frameStyle: FrameStyle = readSavedFrameStyle() ?? FRAME_STYLE_DEFAULT;
-	// 输出染色开关：默认 OUTPUT_TINT_DEFAULT（开），被 /dragon 菜单记住的选择覆盖。
+	// 输出染色开关：默认 OUTPUT_TINT_DEFAULT（关），被 /dragon 菜单记住的选择覆盖。
 	let outputTint = readSavedOutputTint() ?? OUTPUT_TINT_DEFAULT;
 	// 留着给 /dragon 换色后主动重绘，不然要等下一次按键才看到新颜色。
 	let currentTui: TUI | undefined;

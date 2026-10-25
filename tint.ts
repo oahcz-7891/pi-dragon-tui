@@ -23,7 +23,7 @@
  * 主题名、设置、HTML 导出都不动，卸载/关掉扩展即恢复原生配色。
  *
  * 生效时机（按需求）：session_start（启动 / 新会话 / /reload）、/dragon 菜单里换色、
- * 以及菜单里的 Output tint 开关（on / off，默认 on）。
+ * 以及菜单里的 Output tint 开关（on / off，默认 off）。
  * 用户在 /settings 里换 pi 主题后不会自动重染，下次 /dragon 或 /reload 才重新接上。
  *
  * /reload 会重建整个扩展模块，但 prototype 只 patch 一次。所以变色状态放在
