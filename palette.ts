@@ -21,16 +21,14 @@ import { dirname, join } from "node:path";
 // ─────────────────────────────── 配色表 ───────────────────────────────
 
 export interface Palette {
-	/** `/dragon` 的主参数名（角色名），也是补全与菜单里显示的值。 */
+	/** 菜单里显示的 key（角色名）。 */
 	key: string;
 	/** 中文名，文档里用。 */
 	label: string;
-	/** 英文名，CLI 文案（补全 / 菜单 / 通知）里用。 */
+	/** 英文名，菜单文案里用。 */
 	en: string;
 	/** 6 位 hex，带 #。 */
 	hex: string;
-	/** 别名：颜色词 / 中文名，都能当参数用。 */
-	aliases: string[];
 }
 
 export const PALETTES: Palette[] = [
@@ -39,21 +37,18 @@ export const PALETTES: Palette[] = [
 		label: "悟空金",
 		en: "Goku gold",
 		hex: "#f0c674",
-		aliases: ["gold", "yellow", "悟空"],
 	},
 	{
 		key: "vegeta",
 		label: "贝吉塔蓝",
 		en: "Vegeta blue",
 		hex: "#7d9ed4",
-		aliases: ["blue", "贝吉塔"],
 	},
 	{
 		key: "piccolo",
 		label: "短笛绿",
 		en: "Piccolo green",
 		hex: "#7fc95a",
-		aliases: ["green", "短笛"],
 	},
 ];
 
@@ -62,18 +57,6 @@ export const PALETTES: Palette[] = [
 /** 校验 6 位 hex（必须带 #）。 */
 export function isValidHex(value: string): boolean {
 	return /^#[0-9a-fA-F]{6}$/.test(value);
-}
-
-/** 按 key / 别名找配色，大小写不敏感；找不到返回 undefined。 */
-export function resolvePalette(input: string): Palette | undefined {
-	const needle = input.trim().toLowerCase();
-	if (needle.length === 0) return undefined;
-	return PALETTES.find(
-		(p) =>
-			p.key === needle ||
-			p.hex === needle ||
-			p.aliases.some((a) => a.toLowerCase() === needle),
-	);
 }
 
 // ─────────────────────────────── 落盘 ───────────────────────────────
@@ -134,7 +117,7 @@ export function saveHex(hex: string): string | undefined {
  */
 export type ThinkingMode = "line1" | "line2" | "hidden";
 
-/** 固定的循环顺序（`/dragon thinking` 不带参数时按它往下走）。 */
+/** 固定的菜单循环顺序。 */
 export const THINKING_MODES: readonly ThinkingMode[] = ["line1", "line2", "hidden"];
 
 /**
@@ -147,7 +130,7 @@ export const THINKING_MODE_LABELS: Record<ThinkingMode, string> = {
 	hidden: "hidden",
 };
 
-/** `/dragon thinking <值>` 的简写解析；空串或认不出来 → undefined（表示循环切换）。 */
+/** 配置文件里手写 thinkingMode 时的容错解析；认不出来 → undefined（用默认值）。 */
 export function parseThinkingMode(input: string): ThinkingMode | undefined {
 	switch (input.trim().toLowerCase()) {
 		case "1":
@@ -194,7 +177,7 @@ export function readSavedThinkingMode(): ThinkingMode | undefined {
 	return undefined;
 }
 
-/** 写入思考显示方式（`/dragon thinking` / 菜单改的就是它）。 */
+/** 写入思考显示方式（菜单里的 Collapsed thinking 改的就是它）。 */
 export function saveThinkingMode(mode: ThinkingMode): string | undefined {
 	return writeConfig({ thinkingMode: mode });
 }
@@ -213,7 +196,7 @@ export function saveThinkingMode(mode: ThinkingMode): string | undefined {
  */
 export type FrameStyle = "rounded" | "line";
 
-/** 固定的循环顺序（`/dragon frame` 不带参数时按它往下走）。 */
+/** 固定的菜单循环顺序。 */
 export const FRAME_STYLES: readonly FrameStyle[] = ["rounded", "line"];
 
 /** 菜单右侧 / 通知里显示的文案。 */
@@ -222,7 +205,7 @@ export const FRAME_STYLE_LABELS: Record<FrameStyle, string> = {
 	line: "lines",
 };
 
-/** `/dragon frame <值>` 的简写解析；空串或认不出来 → undefined（表示循环切换）。 */
+/** 配置文件里手写 frameStyle 时的容错解析；认不出来 → undefined（用默认值）。 */
 export function parseFrameStyle(input: string): FrameStyle | undefined {
 	switch (input.trim().toLowerCase()) {
 		case "rounded":
@@ -251,7 +234,7 @@ export function readSavedFrameStyle(): FrameStyle | undefined {
 	return typeof value === "string" ? parseFrameStyle(value) : undefined;
 }
 
-/** 写入边框样式（`/dragon frame` / 菜单改的就是它）。 */
+/** 写入边框样式（菜单里的 Frame style 改的就是它）。 */
 export function saveFrameStyle(style: FrameStyle): string | undefined {
 	return writeConfig({ frameStyle: style });
 }
@@ -267,7 +250,7 @@ export function saveFrameStyle(style: FrameStyle): string | undefined {
  */
 export type PromptGlyph = "none" | ">" | "_";
 
-/** 固定的循环顺序（`/dragon prompt` 不带参数时按它往下走）。 */
+/** 固定的菜单循环顺序。 */
 export const PROMPT_GLYPHS: readonly PromptGlyph[] = ["none", ">", "_"];
 
 /** 菜单右侧 / 通知里显示的文案。 */
@@ -277,7 +260,7 @@ export const PROMPT_GLYPH_LABELS: Record<PromptGlyph, string> = {
 	"_": "_",
 };
 
-/** `/dragon prompt <值>` 的简写解析；空串或认不出来 → undefined（表示循环切换）。 */
+/** 配置文件里手写 promptGlyph 时的容错解析；认不出来 → undefined（用默认值）。 */
 export function parsePromptGlyph(input: string): PromptGlyph | undefined {
 	switch (input.trim().toLowerCase()) {
 		case "0":
@@ -320,7 +303,41 @@ export function readSavedPromptGlyph(): PromptGlyph | undefined {
 	return typeof value === "string" ? parsePromptGlyph(value) : undefined;
 }
 
-/** 写入提示符（`/dragon prompt` / 菜单改的就是它）。 */
+/** 写入提示符（菜单里的 Prompt glyph 改的就是它）。 */
 export function savePromptGlyph(glyph: PromptGlyph): string | undefined {
 	return writeConfig({ promptGlyph: glyph });
+}
+
+// ─────────────────────── 输出染色（markdown 跟随边框色） ───────────────────────
+
+/**
+ * 「输出染色」开关：
+ *   true   助理消息的 markdown 强调色 / 正文往 borderHex 上靠（见 tint.ts）；
+ *   false  保持 pi 原生配色。
+ * 默认值在 index.ts 的 OUTPUT_TINT_DEFAULT，这里只管读写配置。
+ */
+export function readSavedOutputTint(): boolean | undefined {
+	const value = readConfig().outputTint;
+	if (typeof value === "boolean") return value;
+	// 手写配置容错："on" / "off" / "true" / "false" 都认。
+	if (typeof value === "string") {
+		switch (value.trim().toLowerCase()) {
+			case "on":
+			case "true":
+			case "yes":
+			case "1":
+				return true;
+			case "off":
+			case "false":
+			case "no":
+			case "0":
+				return false;
+		}
+	}
+	return undefined;
+}
+
+/** 写入输出染色开关（菜单里的 Output tint 改的就是它）。 */
+export function saveOutputTint(enabled: boolean): string | undefined {
+	return writeConfig({ outputTint: enabled });
 }

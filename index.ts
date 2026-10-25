@@ -21,11 +21,15 @@
  * 默认 pi 的 editor 只画上下两条横线；FRAME_STYLE_DEFAULT = "rounded" 时
  * 在子类里把宽度减 2 交给基类渲染，再补上 │ 与 ╭╮╰╯，得到完整圆角盒子。
  * 想回到 pi 原生观感（只留上下两条横线、没有左右竖线）就设 "line"，
- * 也可以随时用 /dragon frame（菜单里的 Frame style）切，写配置、重启仍生效。
+ * 也可以随时在 /dragon 菜单里（Frame style）切，写配置、重启仍生效。
  *
  * 输入框提示符：
  * 第一行行首画 `>` 或 `_`（默认 `>`），续行缩进按它的宽度自动对齐。
- * 用 /dragon prompt（菜单里的 Prompt glyph）切 / 关掉，同样写配置、重启仍生效。
+ * 在 /dragon 菜单里（Prompt glyph）切 / 关掉，同样写配置、重启仍生效。
+ *
+ * 输出染色：
+ * /dragon 菜单里的 Output tint（默认 on）把助理消息的 markdown 强调色与正文
+ * 往边框色上靠，算法与 tint-preview.html 一致（见 tint.ts）。
  *
  * 安装方式（二选一）：
  *   1. package 方式：pi install /绝对路径/pi-dragon-tui（或 pi install git:github.com/xxx/pi-dragon-tui）
@@ -51,25 +55,25 @@ import type {
 import { installRoundedCustom, type RoundedDialogsConfig } from "./rounded-frame.ts";
 import { DragonMenu } from "./picker.ts";
 import {
-	FRAME_STYLES,
+	applyOutputTint,
+	clearOutputTint,
+	hookOutputTintMarkdown,
+	refreshOutputTint,
+} from "./tint.ts";
+import {
 	FRAME_STYLE_LABELS,
 	PALETTES,
-	parseFrameStyle,
-	parsePromptGlyph,
-	parseThinkingMode,
-	PROMPT_GLYPHS,
 	PROMPT_GLYPH_LABELS,
 	readSavedFrameStyle,
 	readSavedHex,
+	readSavedOutputTint,
 	readSavedPromptGlyph,
 	readSavedThinkingMode,
-	resolvePalette,
 	saveFrameStyle,
 	saveHex,
+	saveOutputTint,
 	savePromptGlyph,
 	saveThinkingMode,
-	THINKING_MODES,
-	THINKING_MODE_LABELS,
 	type FrameStyle,
 	type PromptGlyph,
 	type ThinkingMode,
@@ -80,10 +84,15 @@ import {
 /**
  * 默认边框颜色，6 位 hex。原方案 = 悟空金 #f0c674。
  *
- * 只是默认值：`/dragon` 保存过选择时会被它覆盖（见 palette.ts）；
- * 想回到它就用 `/dragon goku`。
+ * 只是默认值：`/dragon` 菜单保存过选择时会被它覆盖（见 palette.ts）。
  */
 const BORDER_HEX = "#f0c674";
+
+/**
+ * 输出染色默认开关。true = 助理消息的 markdown 跟着边框色走；false = pi 原生配色。
+ * 只是默认值：/dragon 菜单里的 Output tint 保存过选择时以存的为准。
+ */
+const OUTPUT_TINT_DEFAULT = true;
 
 /**
  * working 指示器（spinner + "Working" 文案）的颜色，6 位 hex。
@@ -162,7 +171,7 @@ const TPS_KEY = "dragon-tps";
  *               ────────────────
  *               只留上下两条横线，没有左右竖线（pi 原生观感）。
  *
- * 这里只是默认值：`/dragon frame` 保存过选择时以存的为准；运行时切换即时生效，
+ * 这里只是默认值：/dragon 菜单（Frame style）保存过选择时以存的为准；运行时切换即时生效，
  * 输入框与之后打开的弹框都会跟着变。
  */
 const FRAME_STYLE_DEFAULT: FrameStyle = "rounded";
@@ -172,7 +181,7 @@ const FRAME_STYLE_DEFAULT: FrameStyle = "rounded";
  * `PROMPT_LEAD + glyph + 空格`；续行缩进按提示符的实际宽度自动生成，
  * 所以换行后上下两行文字始终对齐。
  *
- * 这里只是默认值：`/dragon prompt`（菜单里的 Prompt glyph）保存过选择时以存的为准；
+ * 这里只是默认值：/dragon 菜单（Prompt glyph）保存过选择时以存的为准；
  * 运行时切换即时生效、写配置、重启仍生效。可选 "none" / ">" / "_"，
  * 想再加字形就改 palette.ts 的 PROMPT_GLYPHS。
  * 颜色跟随边框（BORDER_HEX / `/dragon`），不单独配。
@@ -180,7 +189,7 @@ const FRAME_STYLE_DEFAULT: FrameStyle = "rounded";
 const PROMPT_LEAD = " ";
 const PROMPT_GLYPH_DEFAULT: PromptGlyph = ">";
 
-/** 当前提示符：模块加载时读配置，被 /dragon prompt 与菜单改。 */
+/** 当前提示符：模块加载时读配置，被 /dragon 菜单改。 */
 let promptGlyph: PromptGlyph = readSavedPromptGlyph() ?? PROMPT_GLYPH_DEFAULT;
 
 /** 实际要画的字形（"none" 就是空串），下面几处都读它。 */
@@ -212,7 +221,7 @@ const ROUNDED_CONFIG: RoundedDialogsConfig = {
 };
 
 /**
- * 收起思考（ctrl+T 隐藏）时思考块怎么画 —— 三选一，由 `/dragon thinking` 或
+ * 收起思考（ctrl+T 隐藏）时思考块怎么画 —— 三选一，由
  * `/dragon` 菜单里的 Collapsed thinking 这一项决定；改过就写进配置文件，存过以存的为准。
  *
  * 三个值里的“行”只数实时内容，不含 pi 原生那行 `Thinking...`：
@@ -356,7 +365,7 @@ type WorkingIndicatorLike = {
 
 class FixedBorderEditor extends CustomEditor {
 	private readonly mode: ColorMode;
-	/** 每次渲染都重新取一次，/dragon frame 切完下一帧就生效。 */
+	/** 每次渲染都重新取一次，/dragon 菜单切完下一帧就生效。 */
 	private readonly frameStyle: () => FrameStyle;
 
 	constructor(
@@ -557,7 +566,7 @@ type CollapsedThinkingApplier = (
 
 type ThinkingStore = {
 	containerPatched?: boolean;
-	/** 运行时的显示方式（/dragon thinking）；未初始化时按 THINKING_MODE_DEFAULT。 */
+	/** 运行时的显示方式（/dragon 菜单）；未初始化时按 THINKING_MODE_DEFAULT。 */
 	mode?: ThinkingMode;
 	theme?: Theme;
 	/** 每次扩展加载都指向最新代码，所以改上面的常量后 /reload 立即生效。 */
@@ -883,6 +892,8 @@ function patchContainerAddChild(tui: unknown): void {
 	proto["addChild"] = function (this: unknown, component: unknown): unknown {
 		try {
 			hookAssistantComponent(component);
+			// Markdown 的正文染色要拿到运行时的 prototype（bundle 里的类身份对不上）。
+			hookOutputTintMarkdown(component);
 		} catch {
 			// 静默
 		}
@@ -904,7 +915,7 @@ function installCollapsedThinking(tui: unknown): void {
 	const store = thinkingStore();
 	// 每次加载（含 /reload）都指向最新代码，改常量即时生效。
 	store.apply = applyCollapsedThinking;
-	// 显示方式：配置文件里存过就用存的，否则用常量默认；/dragon thinking 改的就是它。
+	// 显示方式：配置文件里存过就用存的，否则用常量默认；/dragon 菜单改的就是它。
 	store.mode = readSavedThinkingMode() ?? THINKING_MODE_DEFAULT;
 	patchContainerAddChild(tui);
 	// /reload 时历史消息早就 addChild 完了，拦不到；直接扫一遍现有树补 hook。
@@ -952,6 +963,8 @@ function hookExistingComponents(root: unknown): void {
 		seen.add(node);
 		try {
 			hookAssistantComponent(node);
+			// /reload 时历史消息的 Markdown 已经 addChild 完了，这里补上 prototype patch。
+			hookOutputTintMarkdown(node);
 		} catch {
 			// 静默
 		}
@@ -977,17 +990,46 @@ function hookExistingComponents(root: unknown): void {
 export default function (pi: ExtensionAPI) {
 	// 当前配色：index.ts 的 BORDER_HEX 起步，被 /dragon 记住的选择覆盖。
 	const border = new BorderColor(readSavedHex() ?? BORDER_HEX);
-	// 当前边框样式：默认 FRAME_STYLE_DEFAULT（圆角），被 /dragon frame 记住的选择覆盖。
+	// 当前边框样式：默认 FRAME_STYLE_DEFAULT（圆角），被 /dragon 菜单记住的选择覆盖。
 	let frameStyle: FrameStyle = readSavedFrameStyle() ?? FRAME_STYLE_DEFAULT;
+	// 输出染色开关：默认 OUTPUT_TINT_DEFAULT（开），被 /dragon 菜单记住的选择覆盖。
+	let outputTint = readSavedOutputTint() ?? OUTPUT_TINT_DEFAULT;
 	// 留着给 /dragon 换色后主动重绘，不然要等下一次按键才看到新颜色。
 	let currentTui: TUI | undefined;
 	// 同上：换色后按新颜色重画状态栏里的 TPS（TPS 那一段初始化时赋值）。
 	let repaintTpsStatus: ((ctx: ExtensionContext) => void) | undefined;
 
+	/**
+	 * 把「输出染色」当前状态同步到主题：
+	 *   开 → 按 border.hex 重算染色表；关 → 清掉状态、退回原生配色。
+	 * 然后让已渲染的 Markdown 丢掉缓存行重画（只 requestRender 不够）。
+	 */
+	const syncOutputTint = (ctx: ExtensionContext): void => {
+		if (outputTint) applyOutputTint(ctx.ui.theme, border.hex);
+		else clearOutputTint();
+		refreshOutputTint(currentTui);
+	};
+
+	/** 应用输出染色开关：改内存 → 重绘 → 落盘。 */
+	const applyOutputTintSetting = (enabled: boolean, ctx: ExtensionContext): void => {
+		outputTint = enabled;
+		syncOutputTint(ctx);
+
+		const err = saveOutputTint(enabled);
+		const label = enabled ? "on" : "off";
+		ctx.ui.notify(
+			err
+				? `Output tint → ${label}, but saving the config failed: ${err}`
+				: `Output tint → ${label} (saved)`,
+			err ? "warning" : "info",
+		);
+	};
+
 	/** 应用配色：改内存 → 重绘 → 落盘。 */
 	const applyColor = (hex: string, label: string, ctx: ExtensionContext): void => {
 		border.setHex(hex);
-		currentTui?.requestRender(true);
+		// 染色读的是 border.hex，换色后按新色重算；关掉时这步只负责重绘。
+		syncOutputTint(ctx);
 		repaintTpsStatus?.(ctx);
 
 		const err = saveHex(hex);
@@ -1013,14 +1055,6 @@ export default function (pi: ExtensionAPI) {
 		);
 	};
 
-	/** 切到下一个 / 指定的边框样式并弹通知（给 /dragon frame 用）。 */
-	const cycleFrameStyle = (ctx: ExtensionContext, explicit?: FrameStyle): void => {
-		const next =
-			explicit ??
-			FRAME_STYLES[(FRAME_STYLES.indexOf(frameStyle) + 1) % FRAME_STYLES.length]!;
-		applyFrameStyle(next, ctx);
-	};
-
 	/** 应用提示符字形：改内存 → 重绘 → 落盘。promptWidth 跟着变，缩进自动对齐。 */
 	const applyPromptGlyph = (glyph: PromptGlyph, ctx: ExtensionContext): void => {
 		promptGlyph = glyph;
@@ -1035,16 +1069,6 @@ export default function (pi: ExtensionAPI) {
 		);
 	};
 
-	/** 切到下一个 / 指定的提示符并弹通知（给 /dragon prompt 与菜单用）。 */
-	const cyclePromptGlyph = (ctx: ExtensionContext, explicit?: PromptGlyph): void => {
-		const next =
-			explicit ??
-			PROMPT_GLYPHS[
-				(PROMPT_GLYPHS.indexOf(promptGlyph) + 1) % PROMPT_GLYPHS.length
-			]!;
-		applyPromptGlyph(next, ctx);
-	};
-
 	/** 写入「收起思考」显示方式：改内存 → 重绘 → 落盘。返回保存错误与重绘诊断（无错为 undefined）。 */
 	const setCollapsedThinking = (
 		mode: ThinkingMode,
@@ -1057,198 +1081,53 @@ export default function (pi: ExtensionAPI) {
 		return { err, components, blocks: store.blocksHandled ?? 0 };
 	};
 
-	/** 切到某个显示方式并弹一条通知；不传 explicit 就循环到下一个（给 /dragon thinking 用）。 */
-	const cycleCollapsedThinking = (ctx: ExtensionContext, explicit?: ThinkingMode): void => {
-		const store = thinkingStore();
-		const current = store.mode ?? THINKING_MODE_DEFAULT;
-		const next =
-			explicit ??
-			THINKING_MODES[(THINKING_MODES.indexOf(current) + 1) % THINKING_MODES.length]!;
-		const { err, components, blocks } = setCollapsedThinking(next);
-		const label = THINKING_MODE_LABELS[next];
-		// 诊断尾巴：旧消息只有看得到 components/blocks 才知道重绘到底有没有扫到思考块。
-		const diag = ` · ${components} message(s), ${blocks} block(s)`;
-		ctx.ui.notify(
-			err
-				? `Collapsed thinking → ${label}, but saving the config failed: ${err}`
-				: `Collapsed thinking → ${label} (saved)${diag}`,
-			err ? "warning" : "info",
-		);
-	};
-
-	// ── /dragon：切换边框配色；/dragon frame [rounded|lines] 切边框样式；
-	//    /dragon thinking [1|2|off] 切思考折叠时的显示方式；
-	//    /dragon prompt [>|_|none] 切输入框行首提示符 ──
+	// ── /dragon：设置菜单（配色 / 输出染色 / 边框样式 / 折叠思考 / 输入框提示符）。
+	//    旧的 /dragon <后缀> 子命令已全部取消：带任何参数都只打开菜单，不提示。 ──
 	pi.registerCommand("dragon", {
 		description:
-			"Border color (goku / vegeta / piccolo), `frame` for rounded ↔ lines, `thinking` for collapsed-thinking display, or `prompt` for the editor prompt glyph",
-		getArgumentCompletions: (prefix) => {
-			const needle = prefix.trim().toLowerCase();
-			const current = thinkingStore().mode ?? THINKING_MODE_DEFAULT;
-			const items = [
-				...PALETTES.map((p) => ({
-					value: p.key,
-					label: p.key,
-					description: p.en,
-				})),
-				{
-					value: "frame",
-					label: "frame",
-					description: `Cycle editor / modal frame: rounded ↔ lines (now: ${FRAME_STYLE_LABELS[frameStyle]})`,
-				},
-				{
-					value: "frame rounded",
-					label: "frame rounded",
-					description: "╭─╮ / ╰─╯ box with side bars",
-				},
-				{
-					value: "frame lines",
-					label: "frame lines",
-					description: "Keep only the top/bottom rules (pi's native look)",
-				},
-				{
-					value: "thinking",
-					label: "thinking",
-					description: `Cycle collapsed-thinking display (now: ${THINKING_MODE_LABELS[current]})`,
-				},
-				{
-					value: "thinking 1",
-					label: "thinking 1",
-					description: "`Thinking...` header plus one live line",
-				},
-				{
-					value: "thinking 2",
-					label: "thinking 2",
-					description: "`Thinking...` plus a live second line",
-				},
-				{
-					value: "thinking off",
-					label: "thinking off",
-					description: "Only pi's native `Thinking...` header (no live lines)",
-				},
-				{
-					value: "prompt",
-					label: "prompt",
-					description: `Cycle the editor prompt glyph (now: ${PROMPT_GLYPH_LABELS[promptGlyph]})`,
-				},
-				{
-					value: "prompt >",
-					label: "prompt >",
-					description: "Half-width `>` before the first input line",
-				},
-				{
-					value: "prompt _",
-					label: "prompt _",
-					description: "Underscore before the first input line",
-				},
-				{
-					value: "prompt none",
-					label: "prompt none",
-					description: "No prompt glyph — text starts at the edge",
-				},
-			];
-			const hit = items.filter((x) => x.value.startsWith(needle));
-			return hit.length > 0 ? hit : null;
-		},
-		handler: async (args, ctx) => {
-			const arg = args.trim().toLowerCase();
-			const [head = "", ...rest] = arg.split(/\s+/);
-
-			// /dragon prompt [>|_|none] → 输入框行首提示符（写配置，重启仍生效）。
-			if (head === "prompt" || head === "glyph") {
-				const raw = rest.join(" ").trim();
-				if (raw.length > 0 && parsePromptGlyph(raw) === undefined) {
-					ctx.ui.notify(
-						`Unknown prompt glyph "${raw}". Try: > / _ / none (no argument cycles)`,
-						"warning",
-					);
-					return;
-				}
-				cyclePromptGlyph(ctx, parsePromptGlyph(raw));
-				return;
-			}
-
-			// /dragon frame [rounded|lines] → 圆角框 / 只留上下两条横线（写配置，重启仍生效）。
-			if (head === "frame" || head === "box") {
-				const raw = rest.join(" ").trim();
-				const explicit = parseFrameStyle(raw);
-				if (raw.length > 0 && explicit === undefined) {
-					ctx.ui.notify(
-						`Unknown frame style "${raw}". Try: rounded / lines (no argument cycles)`,
-						"warning",
-					);
-					return;
-				}
-				cycleFrameStyle(ctx, explicit);
-				return;
-			}
-
-			// /dragon thinking [1|2|off] → 收起思考怎么显示（写配置，重启仍生效）。
-			if (head === "thinking" || head === "think") {
-				const raw = rest.join(" ").trim();
-				if (raw.length > 0 && parseThinkingMode(raw) === undefined) {
-					ctx.ui.notify(
-						`Unknown thinking mode "${raw}". Try: 1 / 2 / off (no argument cycles)`,
-						"warning",
-					);
-					return;
-				}
-				cycleCollapsedThinking(ctx, parseThinkingMode(raw));
-				return;
-			}
-
-			// 不带参数 → 弹菜单。
+			"Dragon TUI settings: border color, output tint, frame style, collapsed thinking, prompt glyph",
+		handler: async (_args, ctx) => {
 			// 走 ctx.ui.custom() 而不是 ctx.ui.select()：内置 select 不经过 custom()，
 			// 套不上圆角框（见 picker.ts 顶部注释）。
-			if (arg.length === 0) {
-				// 当前配色用名字表示；万一配置里是手写的自定义 hex 才回退到 hex。
-				const current = PALETTES.find((p) => p.hex === border.hex);
-				// 菜单自己不关：选色 / 切换开关即时生效，Esc 才退出。
-				await ctx.ui.custom<void>(
-					(_tui, theme, _keybindings, done) =>
-						new DragonMenu(
-							{
-								theme,
-								colorValue: current ? `${current.key} · ${current.en}` : border.hex,
-								colors: PALETTES.map((p) => ({
-									key: p.key,
-									label: `${p.key} · ${p.en}`,
-								})),
-								frameStyle,
-								promptGlyph,
-								thinkingMode: thinkingStore().mode ?? THINKING_MODE_DEFAULT,
-								onFrameStyle: (style) => {
-									applyFrameStyle(style, ctx);
-								},
-								onPromptGlyph: (glyph) => {
-									applyPromptGlyph(glyph, ctx);
-								},
-								onColor: (key) => {
-									const target = PALETTES.find((p) => p.key === key);
-									if (target) {
-										applyColor(target.hex, `${target.key} · ${target.en}`, ctx);
-									}
-								},
-								onThinking: (mode) => {
-									setCollapsedThinking(mode);
-								},
+			// 当前配色用名字表示；万一配置里是手写的自定义 hex 才回退到 hex。
+			const current = PALETTES.find((p) => p.hex === border.hex);
+			// 菜单自己不关：选色 / 切换开关即时生效，Esc 才退出。
+			await ctx.ui.custom<void>(
+				(_tui, theme, _keybindings, done) =>
+					new DragonMenu(
+						{
+							theme,
+							colorValue: current ? `${current.key} · ${current.en}` : border.hex,
+							colors: PALETTES.map((p) => ({
+								key: p.key,
+								label: `${p.key} · ${p.en}`,
+							})),
+							outputTint,
+							frameStyle,
+							promptGlyph,
+							thinkingMode: thinkingStore().mode ?? THINKING_MODE_DEFAULT,
+							onColor: (key) => {
+								const target = PALETTES.find((p) => p.key === key);
+								if (target) {
+									applyColor(target.hex, `${target.key} · ${target.en}`, ctx);
+								}
 							},
-							done,
-						),
-				);
-				return;
-			}
-
-			// 只认三个主参数及其别名
-			const named = resolvePalette(arg);
-			if (!named) {
-				ctx.ui.notify(
-					`Unknown color "${arg}". Try: ${PALETTES.map((p) => p.key).join(" / ")}`,
-					"warning",
-				);
-				return;
-			}
-			applyColor(named.hex, `${named.key} · ${named.en}`, ctx);
+							onOutputTint: (enabled) => {
+								applyOutputTintSetting(enabled, ctx);
+							},
+							onFrameStyle: (style) => {
+								applyFrameStyle(style, ctx);
+							},
+							onPromptGlyph: (glyph) => {
+								applyPromptGlyph(glyph, ctx);
+							},
+							onThinking: (mode) => {
+								setCollapsedThinking(mode);
+							},
+						},
+						done,
+					),
+			);
 		},
 	});
 	// ── working 文案随机化（像 Claude Code 那样）──
@@ -1384,7 +1263,7 @@ export default function (pi: ExtensionAPI) {
 			installRoundedCustom(ctx.ui, ctx.ui.theme, {
 				...ROUNDED_CONFIG,
 				border: border.paint,
-				// 传 getter：/dragon frame 切完，之后打开的弹框立即用新样式。
+				// 传 getter：/dragon 菜单切完，之后打开的弹框立即用新样式。
 				frameStyle: () => frameStyle,
 			});
 		}
@@ -1401,5 +1280,9 @@ export default function (pi: ExtensionAPI) {
 				() => frameStyle,
 			);
 		});
+
+		// 输出染色：按当前主题 / 配色重算（开关关掉就清掉，退回原生配色）。
+		// 放在编辑器装好之后：这时 currentTui 已就位，Markdown 的 prototype 也已被 hook。
+		syncOutputTint(ctx);
 	});
 }

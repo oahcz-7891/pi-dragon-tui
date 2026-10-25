@@ -63,7 +63,7 @@ export interface RoundedDialogsConfig {
 	 */
 	stripInnerRules?: boolean;
 	/**
-	 * 边框样式；传函数可运行时切换（/dragon frame）。默认 "rounded"。
+	 * 边框样式；传函数可运行时切换（/dragon 菜单里的 Frame style）。默认 "rounded"。
 	 * "line" 时只留上下两条横线，没有左右竖线，内容用满整宽（paddingX 留白照旧）。
 	 * 注意：line 样式下会强制 stripInnerRules（否则内层分隔线与外框横线宽度不一致，看着像重影）。
 	 */

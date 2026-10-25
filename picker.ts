@@ -11,6 +11,7 @@
  * DragonMenu 用 pi-tui 的 SettingsList 搭一个设置页，每一项都能用
  * 空格 / 回车「就地」调节，菜单不关：
  *   - Border color        → 在 goku / vegeta / piccolo 之间循环；
+ *   - Output tint         → 输出染色 on / off（markdown 跟着边框色，见 tint.ts）；
  *   - Frame style         → 在 rounded（圆角框）/ lines（只剩上下横线）之间循环；
  *   - Collapsed thinking  → 在 1 line / 2 lines / hidden 之间循环；
  *   - Prompt glyph        → 在 hidden / `>` / `_` 之间循环（输入框行首提示符）。
@@ -54,6 +55,8 @@ export interface DragonMenuOptions {
 	colors: DragonColorOption[];
 	/** 当前配色对应的展示名（对不上任何一个时循环会从第一个开始）。 */
 	colorValue: string;
+	/** 输出染色是否开启（markdown 跟随边框色）。 */
+	outputTint: boolean;
 	/** 边框当前的样式（圆角 / 横线）。 */
 	frameStyle: FrameStyle;
 	/** 输入框行首当前的提示符。 */
@@ -62,6 +65,8 @@ export interface DragonMenuOptions {
 	thinkingMode: ThinkingMode;
 	/** 循环到某个配色后回调（传 key），菜单保持打开。 */
 	onColor: (key: string) => void;
+	/** 切换输出染色开关后回调，菜单保持打开。 */
+	onOutputTint: (enabled: boolean) => void;
 	/** 切换边框样式后回调，菜单保持打开。 */
 	onFrameStyle: (style: FrameStyle) => void;
 	/** 把提示符切到某个值后回调，菜单保持打开。 */
@@ -84,6 +89,11 @@ export class DragonMenu implements Component, Focusable {
 		// SettingsList 用 values.indexOf(currentValue) 定位，所以 values 得和右侧显示的文字一致。
 		const colorLabels = options.colors.map((c) => c.label);
 		const byLabel = new Map(options.colors.map((c) => [c.label, c.key]));
+		const tintLabels = ["on", "off"];
+		const tintByLabel = new Map([
+			["on", true],
+			["off", false],
+		]);
 		const frameLabels = FRAME_STYLES.map((style) => FRAME_STYLE_LABELS[style]);
 		const frameByLabel = new Map(
 			FRAME_STYLES.map((style) => [FRAME_STYLE_LABELS[style], style]),
@@ -111,6 +121,14 @@ export class DragonMenu implements Component, Focusable {
 				description: "Editor / modal border color. Space or Enter cycles it.",
 				currentValue: options.colorValue,
 				values: colorLabels,
+			},
+			{
+				id: "tint",
+				label: "Output tint",
+				description:
+					"Tint assistant markdown toward the border color: headings, links, inline code, code-block body/fences, quotes, rules, list bullets, plus a faint body wash. Syntax highlighting stays native.",
+				currentValue: options.outputTint ? "on" : "off",
+				values: tintLabels,
 			},
 			{
 				id: "frame",
@@ -146,6 +164,11 @@ export class DragonMenu implements Component, Focusable {
 				if (id === "color") {
 					const key = byLabel.get(newValue);
 					if (key !== undefined) options.onColor(key);
+					return;
+				}
+				if (id === "tint") {
+					const enabled = tintByLabel.get(newValue);
+					if (enabled !== undefined) options.onOutputTint(enabled);
 					return;
 				}
 				if (id === "frame") {
