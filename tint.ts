@@ -6,8 +6,9 @@
  * 这里在运行时把两类东西接到主题色上：
  *
  *   1. markdown 强调色（md*）—— 色相全部旋到主题色；每个 token 保留自己的
- *      亮度，再按角色做层级偏移（标题最亮、代码块围栏最暗；亮色主题方向相反），
+ *      亮度，再按角色做层级偏移（链接最亮、代码块围栏最暗；亮色主题方向相反），
  *      饱和度 = 主题色饱和度 × 权重。层级不塌。
+ *      例外：`mdHeading` 不旋色，按主题明暗写死白 / 黑（见 HEADING_FIXED）。
  *   2. 正文 —— pi 给助理消息的 Markdown 传的 defaultTextStyle 是 undefined，
  *      纯文本因此是终端默认色。这里在 Markdown 的 applyDefaultStyle 上补一层
  *      很淡的主题色（sRGB 空间混 12%，见 tint-preview.html），只作用于
@@ -46,11 +47,11 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 /**
  * markdown 强调色的染色参数（与 tint-preview.html 一致）：
  *   weight    —— 饱和度权重：饱和度 = 主题色饱和度 × weight；
- *   lightness —— 亮度偏移：在原 token 亮度上加 / 减，做出层级（标题最亮）。
+ *   lightness —— 亮度偏移：在原 token 亮度上加 / 减，做出层级（链接最亮）。
  * 偏移量按暗色主题写；亮色主题方向相反（越重要越暗），所以在 buildState 里取反。
+ * 标题（mdHeading）不在表里：它不跟主题色走，固定用 HEADING_FIXED。
  */
 const MD_TINT: Record<string, { weight: number; lightness: number }> = {
-	mdHeading: { weight: 1, lightness: 0.08 },
 	mdLink: { weight: 0.9, lightness: 0.03 },
 	mdCode: { weight: 0.85, lightness: 0 },
 	mdListBullet: { weight: 0.8, lightness: 0.02 },
@@ -64,6 +65,12 @@ const MD_TINT: Record<string, { weight: number; lightness: number }> = {
 
 /** 正文混入主题色的比例（0 = 终端默认色，1 = 纯主题色）。sRGB 空间混合，取 0.12。 */
 const BODY_MIX = 0.12;
+
+/**
+ * 标题固定色（tint-heading-preview.html 的方案 A）：不参与旋色，直接写死。
+ * 暗色主题纯白、亮色主题纯黑 —— 标题跟 /dragon 选的颜色无关。
+ */
+const HEADING_FIXED = { dark: "#ffffff", light: "#000000" } as const;
 
 // ───────────────────────────── 全局状态 ─────────────────────────────
 
@@ -141,6 +148,9 @@ function buildState(theme: Theme, hex: string): TintState {
 			),
 		);
 	}
+
+	// 标题：不走旋色，按主题明暗写死白 / 黑（不再保留「最亮强调色」的层级位）。
+	tokens.set("mdHeading", parseColor(dark ? HEADING_FIXED.dark : HEADING_FIXED.light));
 
 	const textColor = colors["text"];
 	const body = textColor

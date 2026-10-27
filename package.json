@@ -1,6 +1,6 @@
 {
 	"name": "pi-dragon-tui",
-	"version": "0.2.2",
+	"version": "0.2.3",
 	"description": "Dragon Ball / Namek-flavored pi extension: rounded or flat editor frame, framed modals, Namekian working spinner, a tok/s stat, and markdown output tinted to match.",
 	"type": "module",
 	"license": "MIT",

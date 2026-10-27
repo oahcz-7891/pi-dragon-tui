@@ -18,7 +18,7 @@ pi install git:github.com/oahcz-7891/pi-dragon-tui
 
 - **Editor frame** — `rounded` box or `lines` (pi-native rules), with a border-colored prompt glyph (`>` / `_` / hidden). Wrapped lines keep the indent. The frame ignores theme, thinking-level and bash-mode color overrides.
 - **Framed dialogs** — every `ctx.ui.custom()` modal gets the same frame; built-in `select` / `confirm` / `input` / `editor` stay native.
-- **Output tint** — markdown headings, links, inline code, code blocks, quotes, list bullets and body text lean toward the active palette. Code-block syntax highlighting stays native. Toggle in `/dragon`; off by default.
+- **Output tint** — markdown emphasis and body text follow the active palette (`/dragon` to toggle; off by default).
 - **Palettes** — Goku gold `#f0c674`, Vegeta blue `#7d9ed4`, Piccolo green `#7fc95a`. Switch live from `/dragon`; frame, spinner, TPS, prompt glyph and output tint share one color source. Saved across restarts.
 - **Collapsed thinking** — while reasoning is hidden, show `1 line`, `2 lines`, or nothing under pi's `Thinking...` header. Expanded thinking is untouched.
 - **Namekian working words** — "Working" rotates through `Purunga…` and friends, per turn or on a timer.

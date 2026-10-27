@@ -18,7 +18,7 @@ pi install git:github.com/oahcz-7891/pi-dragon-tui
 
 - **编辑器外框** — `rounded` 圆角框或 `lines` 纯横线（pi 原生观感），带边框色提示符（`>` / `_` / 隐藏）；换行保持缩进。边框色不受主题、思考等级、bash 模式影响。
 - **弹窗外框** — 所有 `ctx.ui.custom()` 弹窗自动套同款边框；内置 `select` / `confirm` / `input` / `editor` 保持原生。
-- **输出染色** — 助理消息的 markdown（标题、链接、行内代码、代码块、引用、列表符号）和正文会跟着当前配色走；代码块内的语法高亮保持 pi 原生。`/dragon` 菜单里的 Output tint 可开关，默认关。
+- **输出染色** — 助理消息的 markdown 强调色和正文跟着当前配色走（`/dragon` 里可开关，默认关）。
 - **配色** — 悟空金 `#f0c674` / 贝吉塔蓝 `#7d9ed4` / 比克绿 `#7fc95a`。`/dragon` 里实时切换；边框、spinner、TPS、提示符、输出染色共用同一个色源，选择保存后重启仍生效。
 - **折叠思考** — 思考隐藏时，在 pi 的 `Thinking...` 下显示 `1 line` / `2 lines` / 不显示；展开状态不动。
 - **那美克星语加载词** — "Working" 轮换 `Purunga…` 等词，可按轮或定时切换。

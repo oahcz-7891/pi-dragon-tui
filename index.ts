@@ -30,6 +30,8 @@
  * 输出染色：
  * /dragon 菜单里的 Output tint（默认 off，可手动开启）把助理消息的 markdown 强调色
  * 与正文往边框色上靠，算法与 tint-preview.html 一致（见 tint.ts）。
+ * 标题（mdHeading）例外：不跟边框色走，固定白（暗色主题）/ 黑（亮色主题），
+ * 见 tint-heading-preview.html 与 tint.ts 的 HEADING_FIXED。
  *
  * 安装方式（二选一）：
  *   1. package 方式：pi install /绝对路径/pi-dragon-tui（或 pi install git:github.com/xxx/pi-dragon-tui）
