@@ -11,7 +11,7 @@
  * DragonMenu 用 pi-tui 的 SettingsList 搭一个设置页，每一项都能用
  * 空格 / 回车「就地」调节，菜单不关：
  *   - Border color        → 在 goku / vegeta / piccolo 之间循环；
- *   - Output tint         → 输出染色 on / off（markdown 跟着边框色，见 tint.ts）；
+ *   - Output tint         → 输出染色 + Claude 排版 on / off（markdown 跟着边框色，见 tint.ts）；
  *   - Frame style         → 在 rounded（圆角框）/ lines（只剩上下横线）之间循环；
  *   - Collapsed thinking  → 在 1 line / 2 lines / hidden 之间循环；
  *   - Prompt glyph        → 在 hidden / `>` / `_` 之间循环（输入框行首提示符）。
@@ -126,7 +126,7 @@ export class DragonMenu implements Component, Focusable {
 				id: "tint",
 				label: "Output tint",
 				description:
-					"Tint assistant markdown toward the border color: headings, links, inline code, code-block body/fences, quotes, rules, list bullets, plus a faint body wash. Syntax highlighting stays native.",
+					"Switch assistant markdown to the Claude-style layout (bold headings without `#`, no code fences or indent, `•` bullets, non-italic quotes) and tint it toward the border color: links, inline code, bullets, quotes, rules, plus a faint body wash. Syntax highlighting stays native.",
 				currentValue: options.outputTint ? "on" : "off",
 				values: tintLabels,
 			},

@@ -27,9 +27,11 @@
  * 第一行行首画 `>` 或 `_`（默认 `>`），续行缩进按它的宽度自动对齐。
  * 在 /dragon 菜单里（Prompt glyph）切 / 关掉，同样写配置、重启仍生效。
  *
- * 输出染色：
- * /dragon 菜单里的 Output tint（默认 off，可手动开启）把助理消息的 markdown 强调色
- * 与正文往边框色上靠，算法与 tint-preview.html 一致（见 tint.ts）。
+ * 输出染色（Output tint）：
+ * /dragon 菜单里的开关（默认 off）。打开后助理消息的 markdown 同时做两件事：
+ *   1. 强调色与正文往边框色上靠，算法与 tint-preview.html / claude-md-preview.html 一致（见 tint.ts）；
+ *   2. 换成 Claude 风排版：标题加粗无 #、h1 无下划线、代码块无围栏无缩进、列表 •、
+ *      引用不斜体。关掉整体退回 pi 原生排版与配色。
  * 标题（mdHeading）例外：不跟边框色走，固定白（暗色主题）/ 黑（亮色主题），
  * 见 tint-heading-preview.html 与 tint.ts 的 HEADING_FIXED。
  *
@@ -91,7 +93,8 @@ import {
 const BORDER_HEX = "#f0c674";
 
 /**
- * 输出染色默认开关。true = 助理消息的 markdown 跟着边框色走；false = pi 原生配色。
+ * 输出染色默认开关。true = 助理消息的 markdown 跟着边框色走（并换 Claude 排版）；
+ * false = pi 原生配色与排版。
  * 默认关闭：保持 pi 原生观感，想要染色在 /dragon 菜单里手动打开。
  * 只是默认值：/dragon 菜单里的 Output tint 保存过选择时以存的为准。
  */
