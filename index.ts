@@ -73,11 +73,13 @@ import {
 	readSavedOutputTint,
 	readSavedPromptGlyph,
 	readSavedThinkingMode,
+	readSavedTps,
 	saveFrameStyle,
 	saveHex,
 	saveOutputTint,
 	savePromptGlyph,
 	saveThinkingMode,
+	saveTps,
 	type FrameStyle,
 	type PromptGlyph,
 	type ThinkingMode,
@@ -153,8 +155,16 @@ const WORKING_SUFFIX = "…";
  * 显示成一行主题色文字：`48.2 tok/s`（用边框那套配色 border.paint，
  * 跟 /dragon 换色联动）。它走 ctx.ui.setStatus()，
  * 占状态栏扩展状态那一行，不会改动原生 footer。
+ *
+ * 显示与否由 /dragon 菜单里的 TPS 项控制（默认隐藏，见 TPS_DEFAULT）。
  */
 const TPS_ENABLED = true;
+/**
+ * 状态栏默认是否显示 TPS。默认 false = 隐藏，
+ * 想要就在 /dragon 菜单里打开（写配置、重启仍生效）。
+ * TPS_ENABLED = false 时整项从菜单里消失，连统计都不做。
+ */
+const TPS_DEFAULT = false;
 /** 数字前后的文案；默认只有 ` tok/s`，想要前缀（比如 ⚡）就填这里。 */
 const TPS_PREFIX = "";
 const TPS_SUFFIX = " tok/s";
@@ -1091,7 +1101,7 @@ export default function (pi: ExtensionAPI) {
 	//    旧的 /dragon <后缀> 子命令已全部取消：带任何参数都只打开菜单，不提示。 ──
 	pi.registerCommand("dragon", {
 		description:
-			"Dragon TUI settings: border color, output tint, frame style, collapsed thinking, prompt glyph",
+			"Dragon TUI settings: border color, output tint, frame style, collapsed thinking, prompt glyph, TPS",
 		handler: async (_args, ctx) => {
 			// 走 ctx.ui.custom() 而不是 ctx.ui.select()：内置 select 不经过 custom()，
 			// 套不上圆角框（见 picker.ts 顶部注释）。
@@ -1112,6 +1122,13 @@ export default function (pi: ExtensionAPI) {
 							frameStyle,
 							promptGlyph,
 							thinkingMode: thinkingStore().mode ?? THINKING_MODE_DEFAULT,
+							// TPS_ENABLED = false 时整项不出现（不传 = 菜单里没有这一行）。
+							...(TPS_ENABLED
+								? {
+									tps: tpsEnabled,
+									onTps: (enabled: boolean) => applyTpsSetting(enabled, ctx),
+								}
+								: {}),
 							onColor: (key) => {
 								const target = PALETTES.find((p) => p.key === key);
 								if (target) {
@@ -1168,6 +1185,12 @@ export default function (pi: ExtensionAPI) {
 	// ── TPS：底部状态栏的生成速度统计（流式实时 / 停下显示会话平均）──
 	// 走 ctx.ui.setStatus()，占扩展状态那一行；原生 footer 的 ↑↓ 统计行不动。
 	// 颜色跟边框同一个源（border.paint），所以 /dragon 换色后这里跟着变。
+
+	// 菜单开关：存过以存的为准，否则 TPS_DEFAULT（默认隐藏）。
+	let tpsEnabled = readSavedTps() ?? TPS_DEFAULT;
+	/** 真的要算 / 显示吗：编译期总闸 × 菜单开关。 */
+	const tpsOn = (): boolean => TPS_ENABLED && tpsEnabled;
+
 	let tpsStartMs: number | undefined;
 	let tpsLastRenderMs = 0;
 	// 当前显示的数值，换色时要拿它用新颜色重画一次。
@@ -1185,7 +1208,7 @@ export default function (pi: ExtensionAPI) {
 
 	// 换配色后重画 TPS，否则那一行要等到下一条消息才变色。
 	repaintTpsStatus = (ctx) => {
-		if (!TPS_ENABLED || tpsShownValue === undefined) return;
+		if (!tpsOn() || tpsShownValue === undefined) return;
 		ctx.ui.setStatus(TPS_KEY, border.paint(tpsText(tpsShownValue)));
 	};
 
@@ -1195,16 +1218,38 @@ export default function (pi: ExtensionAPI) {
 		writeTps(ctx, tpsSumTokens / tpsSumSeconds);
 	};
 
+	/**
+	 * 应用 TPS 开关：改内存 → 立即重画 / 清空状态栏 → 落盘。
+	 * 切到 on 时，本会话已有累计就马上显示平均值，否则等下个 token。
+	 */
+	const applyTpsSetting = (enabled: boolean, ctx: ExtensionContext): void => {
+		tpsEnabled = enabled;
+		if (!tpsOn()) {
+			// 关掉：状态栏那一行立刻消失，但累计值留着，再打开还能用。
+			ctx.ui.setStatus(TPS_KEY, undefined);
+		} else {
+			writeSessionAverage(ctx);
+			if (tpsShownValue !== undefined) repaintTpsStatus?.(ctx);
+		}
+
+		const err = saveTps(enabled);
+		const label = enabled ? "on" : "off";
+		ctx.ui.notify(
+			err ? `TPS → ${label}, but saving the config failed: ${err}` : `TPS → ${label} (saved)`,
+			err ? "warning" : "info",
+		);
+	};
+
 	// 新一轮只重置当条消息的计时、不清空显示：会话累计值保留（中途不消失），
 	// 首个 token 到了再重新计时；只有 session_start（新会话 / 切会话）才真正清掉。
 	pi.on("turn_start", () => {
-		if (!TPS_ENABLED) return;
+		if (!tpsOn()) return;
 		tpsStartMs = undefined;
 		tpsLastRenderMs = 0;
 	});
 
 	pi.on("message_update", (event, ctx) => {
-		if (!TPS_ENABLED) return;
+		if (!tpsOn()) return;
 		const ev = event.assistantMessageEvent;
 		if (ev.type !== "text_delta" && ev.type !== "thinking_delta" && ev.type !== "toolcall_delta") {
 			return;
@@ -1226,7 +1271,7 @@ export default function (pi: ExtensionAPI) {
 	// 一条 assistant 消息结束：把这轮的 tokens 与纯生成秒数累进会话，
 	// 然后显示整个会话的平均速度 —— 停下时看到的就是平均值。
 	pi.on("message_end", (event, ctx) => {
-		if (!TPS_ENABLED) return;
+		if (!tpsOn()) return;
 		const message = event.message as unknown as AssistantMessageLike;
 		if (message.role !== "assistant" || tpsStartMs === undefined) return;
 
@@ -1241,7 +1286,7 @@ export default function (pi: ExtensionAPI) {
 
 	// 整轮结束再确认一次平均值（中途 abort / 没有 message_end 时也保证对得上）。
 	pi.on("agent_end", (_event, ctx) => {
-		if (TPS_ENABLED) writeSessionAverage(ctx);
+		if (tpsOn()) writeSessionAverage(ctx);
 	});
 
 	pi.on("session_start", (_event, ctx) => {
@@ -1250,10 +1295,12 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		// 新会话/切会话：清掉上一条会话遗留的 TPS 与会话累计。
-		if (TPS_ENABLED) {
+		if (tpsOn()) {
 			tpsSumTokens = 0;
 			tpsSumSeconds = 0;
 			writeTps(ctx, undefined);
+		} else {
+			ctx.ui.setStatus(TPS_KEY, undefined);
 		}
 
 		const mode = ctx.ui.theme.getColorMode() as ColorMode;

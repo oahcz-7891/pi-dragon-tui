@@ -14,7 +14,8 @@
  *   - Output tint         → 输出染色 + Claude 排版 on / off（markdown 跟着边框色，见 tint.ts）；
  *   - Frame style         → 在 rounded（圆角框）/ lines（只剩上下横线）之间循环；
  *   - Collapsed thinking  → 在 1 line / 2 lines / hidden 之间循环；
- *   - Prompt glyph        → 在 hidden / `>` / `_` 之间循环（输入框行首提示符）。
+ *   - Prompt glyph        → 在 hidden / `>` / `_` 之间循环（输入框行首提示符）；
+ *   - TPS                 → 状态栏 tok/s 统计 on / off（默认 off；TPS_ENABLED = false 时整项不出现）。
  * 上下键移动光标，Esc 关闭。
  *
  * 键盘导航复用 pi-tui 的 SettingsList，观感和内置弹框一致。
@@ -73,6 +74,10 @@ export interface DragonMenuOptions {
 	onPromptGlyph: (glyph: PromptGlyph) => void;
 	/** 把思考显示方式切到某个值后回调，菜单保持打开。 */
 	onThinking: (mode: ThinkingMode) => void;
+	/** 状态栏是否显示 TPS；undefined = 不显示这一项（TPS_ENABLED = false）。 */
+	tps?: boolean;
+	/** 切换 TPS 开关后回调，菜单保持打开。 */
+	onTps?: (enabled: boolean) => void;
 }
 
 /**
@@ -156,6 +161,18 @@ export class DragonMenu implements Component, Focusable {
 			},
 		];
 
+		// TPS 项只在 TPS_ENABLED = true 时才出现；默认 off（状态栏隐藏）。
+		if (options.tps !== undefined) {
+			items.push({
+				id: "tps",
+				label: "TPS",
+				description:
+					"tok/s in the status bar: live while streaming, session average when idle. `off` hides the line entirely.",
+				currentValue: options.tps ? "on" : "off",
+				values: tintLabels,
+			});
+		}
+
 		this.list = new SettingsList(
 			items,
 			items.length,
@@ -184,6 +201,11 @@ export class DragonMenu implements Component, Focusable {
 				if (id === "prompt") {
 					const glyph = promptByLabel.get(newValue);
 					if (glyph !== undefined) options.onPromptGlyph(glyph);
+					return;
+				}
+				if (id === "tps") {
+					const enabled = tintByLabel.get(newValue);
+					if (enabled !== undefined) options.onTps?.(enabled);
 				}
 			},
 			onClose,

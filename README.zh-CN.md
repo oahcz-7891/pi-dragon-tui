@@ -22,12 +22,12 @@ pi install git:github.com/oahcz-7891/pi-dragon-tui
 - **配色** — 悟空金 `#f0c674` / 贝吉塔蓝 `#7d9ed4` / 比克绿 `#7fc95a`。`/dragon` 里实时切换；边框、spinner、TPS、提示符、输出染色共用同一个色源，选择保存后重启仍生效。
 - **折叠思考** — 思考隐藏时，在 pi 的 `Thinking...` 下显示 `1 line` / `2 lines` / 不显示；展开状态不动。
 - **那美克星语加载词** — "Working" 轮换 `Purunga…` 等词，可按轮或定时切换。
-- **TPS** — 流式时显示实时 `48.2 tok/s`，结束后显示会话平均，颜色与边框一致；不计工具等待和首 token 延迟。
+- **TPS** — 流式时显示实时 `48.2 tok/s`，结束后显示会话平均，颜色与边框一致；不计工具等待和首 token 延迟。默认隐藏，在 `/dragon` 里的 TPS 项打开。
 
 ## 命令
 
 ```
-/dragon    # 设置菜单：边框配色、输出染色、边框样式、折叠思考、输入框提示符
+/dragon    # 设置菜单：边框配色、输出染色、边框样式、折叠思考、输入框提示符、TPS
 ```
 
 `↑↓` 移动，`Space` / `Enter` 就地切换，`Esc` 关闭。没有子命令 —— 带任何参数也只会打开菜单。
@@ -42,5 +42,5 @@ pi install git:github.com/oahcz-7891/pi-dragon-tui
 
 - **提示符** — `BORDER_HEX`、`PROMPT_LEAD`、`PROMPT_GLYPH_DEFAULT`、`FRAME_STYLE_DEFAULT`、`ROUNDED_ENABLED`。
 - **输出染色** — `OUTPUT_TINT_DEFAULT`；权重与正文混色在 `tint.ts`。
-- **TPS** — `TPS_ENABLED`、`TPS_PREFIX`、`TPS_SUFFIX`、`TPS_REFRESH_MS`。
+- **TPS** — `TPS_ENABLED`（编译期总闸）、`TPS_DEFAULT`、`TPS_PREFIX`、`TPS_SUFFIX`、`TPS_REFRESH_MS`。
 - **思考 / 加载词** — `THINKING_MODE_DEFAULT`、`THINKING_HINT`、`WORKING_WORDS`、`WORKING_ROTATE_MS`。

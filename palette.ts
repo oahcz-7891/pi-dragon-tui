@@ -341,3 +341,37 @@ export function readSavedOutputTint(): boolean | undefined {
 export function saveOutputTint(enabled: boolean): string | undefined {
 	return writeConfig({ outputTint: enabled });
 }
+
+// ─────────────────────── 状态栏 TPS（tok/s）开关 ───────────────────────
+
+/**
+ * 「TPS」开关：
+ *   true   底部状态栏显示生成速度（流式实时 / 停下显示会话平均）；
+ *   false  完全不显示（默认）。
+ * 默认值在 index.ts 的 TPS_DEFAULT，这里只管读写配置。
+ */
+export function readSavedTps(): boolean | undefined {
+	const value = readConfig().tps;
+	if (typeof value === "boolean") return value;
+	// 手写配置容错："on" / "off" / "true" / "false" 都认。
+	if (typeof value === "string") {
+		switch (value.trim().toLowerCase()) {
+			case "on":
+			case "true":
+			case "yes":
+			case "1":
+				return true;
+			case "off":
+			case "false":
+			case "no":
+			case "0":
+				return false;
+		}
+	}
+	return undefined;
+}
+
+/** 写入 TPS 开关（菜单里的 TPS 改的就是它）。 */
+export function saveTps(enabled: boolean): string | undefined {
+	return writeConfig({ tps: enabled });
+}

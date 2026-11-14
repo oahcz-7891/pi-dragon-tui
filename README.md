@@ -22,12 +22,12 @@ pi install git:github.com/oahcz-7891/pi-dragon-tui
 - **Palettes** — Goku gold `#f0c674`, Vegeta blue `#7d9ed4`, Piccolo green `#7fc95a`. Switch live from `/dragon`; frame, spinner, TPS, prompt glyph and output tint share one color source. Saved across restarts.
 - **Collapsed thinking** — while reasoning is hidden, show `1 line`, `2 lines`, or nothing under pi's `Thinking...` header. Expanded thinking is untouched.
 - **Namekian working words** — "Working" rotates through `Purunga…` and friends, per turn or on a timer.
-- **TPS** — live `48.2 tok/s` while streaming, then the session average, in the border color. Tool waits and TTFT are excluded.
+- **TPS** — live `48.2 tok/s` while streaming, then the session average, in the border color. Tool waits and TTFT are excluded. Hidden by default; turn it on from `/dragon` (TPS).
 
 ## Command
 
 ```
-/dragon    # settings menu: border color, output tint, frame style, collapsed thinking, prompt glyph
+/dragon    # settings menu: border color, output tint, frame style, collapsed thinking, prompt glyph, TPS
 ```
 
 `↑↓` move, `Space` / `Enter` change in place, `Esc` closes. There are no subcommands — any arguments are ignored and the menu opens.
@@ -42,5 +42,5 @@ Constants at the top of `index.ts`:
 
 - **Prompt** — `BORDER_HEX`, `PROMPT_LEAD`, `PROMPT_GLYPH_DEFAULT`, `FRAME_STYLE_DEFAULT`, `ROUNDED_ENABLED`.
 - **Output tint** — `OUTPUT_TINT_DEFAULT`; weights and body mix live in `tint.ts`.
-- **TPS** — `TPS_ENABLED`, `TPS_PREFIX`, `TPS_SUFFIX`, `TPS_REFRESH_MS`.
+- **TPS** — `TPS_ENABLED` (compile-time master switch), `TPS_DEFAULT`, `TPS_PREFIX`, `TPS_SUFFIX`, `TPS_REFRESH_MS`.
 - **Thinking / spinner** — `THINKING_MODE_DEFAULT`, `THINKING_HINT`, `WORKING_WORDS`, `WORKING_ROTATE_MS`.
